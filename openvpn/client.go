@@ -8,13 +8,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/apparentlymart/go-openvpn-mgmt/demux"
+	"github.com/malyshevhen/openvpn/demux"
 )
 
-var newline = []byte{'\n'}
-var successPrefix = []byte("SUCCESS: ")
-var errorPrefix = []byte("ERROR: ")
-var endMessage = []byte("END")
+var (
+	newline       = []byte{'\n'}
+	successPrefix = []byte("SUCCESS: ")
+	errorPrefix   = []byte("ERROR: ")
+	endMessage    = []byte("END")
+)
 
 // StatusFormat enum type
 type StatusFormat string
@@ -88,7 +90,7 @@ func NewClient(conn io.ReadWriter, eventCh chan<- Event) *MgmtClient {
 // OpenVPN will create a suitable management port if launched with the
 // following command line option:
 //
-//    --management <ipaddr> <port>
+//	--management <ipaddr> <port>
 //
 // Address may an IPv4 address, an IPv6 address, or a hostname that resolves
 // to either of these, followed by a colon and then a port number.
@@ -97,8 +99,7 @@ func NewClient(conn io.ReadWriter, eventCh chan<- Event) *MgmtClient {
 // domain socket. To do this, pass an absolute path to the socket as
 // the target address, having run OpenVPN with the following options:
 //
-//    --management /path/to/socket unix
-//
+//	--management /path/to/socket unix
 func Dial(addr string, eventCh chan<- Event) (*MgmtClient, error) {
 	proto := "tcp"
 	if len(addr) > 0 && addr[0] == '/' {
@@ -119,7 +120,7 @@ func Dial(addr string, eventCh chan<- Event) (*MgmtClient, error) {
 // OpenVPN can be instructed to activate a management hold on startup by
 // running it with the following option:
 //
-//     --management-hold
+//	--management-hold
 //
 // Instructing OpenVPN to hold gives your client a chance to connect and
 // do any necessary configuration before a connection proceeds, thus avoiding
@@ -211,7 +212,7 @@ func (c *MgmtClient) LatestState() (*StateEvent, error) {
 	}
 
 	if len(payload) != 1 {
-		return nil, fmt.Errorf("Malformed OpenVPN 'state' response")
+		return nil, fmt.Errorf("malformed OpenVPN 'state' response")
 	}
 
 	return &StateEvent{
@@ -222,12 +223,13 @@ func (c *MgmtClient) LatestState() (*StateEvent, error) {
 // LatestStatus retrieves the current daemon status information, in the same format as that produced by the OpenVPN --status directive.
 func (c *MgmtClient) LatestStatus(statusFormat StatusFormat) ([][]byte, error) {
 	var cmd []byte
-	if statusFormat == StatusFormatDefault {
+	switch statusFormat {
+	case StatusFormatDefault:
 		cmd = []byte("status")
-	} else if statusFormat == StatusFormatV3 {
+	case StatusFormatV3:
 		cmd = []byte("status 3")
-	} else {
-		return nil, fmt.Errorf("Incorrect 'status' format option")
+	default:
+		return nil, fmt.Errorf("incorrect 'status' format option")
 	}
 	err := c.sendCommand(cmd)
 	if err != nil {
@@ -315,7 +317,7 @@ func (c *MgmtClient) readCommandResponsePayload() ([][]byte, error) {
 		if !ok {
 			// We'll give the caller whatever we got before the connection
 			// closed, in case it's useful for debugging.
-			return lines, fmt.Errorf("connection closed before END recieved")
+			return lines, fmt.Errorf("connection closed before END received")
 		}
 
 		if bytes.Equal(line, endMessage) {

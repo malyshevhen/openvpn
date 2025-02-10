@@ -6,20 +6,22 @@ import (
 	"strconv"
 )
 
-var eventSep = []byte(":")
-var fieldSep = []byte(",")
-var byteCountEventKW = []byte("BYTECOUNT")
-var byteCountCliEventKW = []byte("BYTECOUNT_CLI")
-var clientEventKW = []byte("CLIENT")
-var echoEventKW = []byte("ECHO")
-var fatalEventKW = []byte("FATAL")
-var holdEventKW = []byte("HOLD")
-var infoEventKW = []byte("INFO")
-var logEventKW = []byte("LOG")
-var needOkEventKW = []byte("NEED-OK")
-var needStrEventKW = []byte("NEED-STR")
-var passwordEventKW = []byte("PASSWORD")
-var stateEventKW = []byte("STATE")
+var (
+	eventSep            = []byte(":")
+	fieldSep            = []byte(",")
+	byteCountEventKW    = []byte("BYTECOUNT")
+	byteCountCliEventKW = []byte("BYTECOUNT_CLI")
+	clientEventKW       = []byte("CLIENT")
+	echoEventKW         = []byte("ECHO")
+	fatalEventKW        = []byte("FATAL")
+	holdEventKW         = []byte("HOLD")
+	infoEventKW         = []byte("INFO")
+	logEventKW          = []byte("LOG")
+	needOkEventKW       = []byte("NEED-OK")
+	needStrEventKW      = []byte("NEED-STR")
+	passwordEventKW     = []byte("PASSWORD")
+	stateEventKW        = []byte("STATE")
+)
 
 type Event interface {
 	String() string
@@ -166,7 +168,7 @@ func (e *StateEvent) parts() [][]byte {
 //
 // The format of the echo message is free-form, since this message type is
 // intended to pass application-specific data from the server-side config
-// into whatever client is consuming the management prototcol.
+// into whatever client is consuming the management protocol.
 //
 // This event is emitted only if the management client has turned on events
 // of this type using client.SetEchoEvents(true)
@@ -198,7 +200,7 @@ func (e *EchoEvent) String() string {
 // on a VPN connection.
 //
 // For OpenVPN *servers*, events are emitted for each client and the method
-// ClientId identifies thet client.
+// ClientId identifies that client.
 //
 // For other OpenVPN modes, events are emitted only once per interval for the
 // single connection managed by the target process, and ClientId returns
