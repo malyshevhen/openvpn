@@ -1,8 +1,9 @@
-package openvpn_test
+package server_test
 
-import(
-	"github.com/malyshevhen/openvpn/openvpn"
+import (
 	"testing"
+
+	. "github.com/malyshevhen/openvpn/pkg/server"
 )
 
 func TestListen(t *testing.T) {
@@ -10,14 +11,14 @@ func TestListen(t *testing.T) {
 		name string // description of this test case
 		// Named input parameters for target function.
 		laddr   string
-		want    *openvpn.MgmtListener
+		want    *MgmtListener
 		wantErr bool
 	}{
 		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotErr := openvpn.Listen(tt.laddr)
+			got, gotErr := Listen(tt.laddr)
 			if gotErr != nil {
 				if !tt.wantErr {
 					t.Errorf("Listen() failed: %v", gotErr)
@@ -34,4 +35,3 @@ func TestListen(t *testing.T) {
 		})
 	}
 }
-

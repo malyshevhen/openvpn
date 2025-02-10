@@ -1,4 +1,4 @@
-package openvpn
+package events
 
 import (
 	"bytes"
@@ -389,7 +389,7 @@ func (e *fatalEvent) String() string {
 	return fmt.Sprintf("FATAL: %s", string(e.body))
 }
 
-func upgradeEvent(raw []byte) Event {
+func UpgradeEvent(raw []byte) Event {
 	splitIdx := bytes.Index(raw, eventSep)
 	if splitIdx == -1 {
 		// Should never happen, but we'll handle it robustly if it does.

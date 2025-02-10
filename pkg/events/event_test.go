@@ -1,8 +1,10 @@
-package openvpn
+package events_test
 
 import (
 	"fmt"
 	"testing"
+
+	. "github.com/malyshevhen/openvpn/pkg/events"
 )
 
 // A key requirement of our event parsing is that it must never cause a
@@ -22,7 +24,7 @@ func TestMalformedEvent(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		event := upgradeEvent(testCase)
+		event := UpgradeEvent(testCase)
 
 		var malformed MalformedEvent
 		var ok bool
@@ -63,7 +65,7 @@ func TestUnknownEvent(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		event := upgradeEvent(testCase.Input)
+		event := UpgradeEvent(testCase.Input)
 
 		var unk UnknownEvent
 		var ok bool
@@ -88,7 +90,7 @@ func TestHoldEvent(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		event := upgradeEvent(testCase)
+		event := UpgradeEvent(testCase)
 
 		var hold HoldEvent
 		var ok bool
@@ -134,7 +136,7 @@ func TestEchoEvent(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		event := upgradeEvent(testCase.Input)
+		event := UpgradeEvent(testCase.Input)
 
 		var echo EchoEvent
 		var ok bool
@@ -213,7 +215,7 @@ func TestStateEvent(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		event := upgradeEvent(testCase.Input)
+		event := UpgradeEvent(testCase.Input)
 
 		var st StateEvent
 		var ok bool
@@ -324,7 +326,7 @@ func TestByteCountEvent(t *testing.T) {
 	}
 
 	for i, testCase := range testCases {
-		event := upgradeEvent(testCase.Input)
+		event := UpgradeEvent(testCase.Input)
 
 		var bc ByteCountEvent
 		var ok bool

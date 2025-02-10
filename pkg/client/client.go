@@ -1,4 +1,4 @@
-package openvpn
+package client
 
 import (
 	"bytes"
@@ -8,7 +8,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/malyshevhen/openvpn/demux"
+	"github.com/malyshevhen/openvpn/pkg/demux"
+	"github.com/malyshevhen/openvpn/pkg/events"
+	errors "github.com/malyshevhen/openvpn/pkg/errors"
 )
 
 var (
@@ -62,7 +64,7 @@ func (m *MgmtClient) Close() error {
 // is closed. Connection errors may also concurrently surface as error
 // responses from the client's various command methods, should an error
 // occur while we await a reply.
-func NewClient(conn io.ReadWriteCloser, eventCh chan<- Event) *MgmtClient {
+func NewClient(conn io.ReadWriteCloser, eventCh chan<- events.Event) *MgmtClient {
 	replyCh := make(chan []byte)
 	rawEventCh := make(chan []byte) // not buffered because eventCh should be
 
@@ -72,7 +74,7 @@ func NewClient(conn io.ReadWriteCloser, eventCh chan<- Event) *MgmtClient {
 	// passing them on to the caller's event channel.
 	go func() {
 		for raw := range rawEventCh {
-			eventCh <- upgradeEvent(raw)
+			eventCh <- events.UpgradeEvent(raw)
 		}
 		close(eventCh)
 	}()
@@ -104,7 +106,7 @@ func NewClient(conn io.ReadWriteCloser, eventCh chan<- Event) *MgmtClient {
 // the target address, having run OpenVPN with the following options:
 //
 //	--management /path/to/socket unix
-func Dial(addr string, eventCh chan<- Event) (*MgmtClient, error) {
+func Dial(addr string, eventCh chan<- events.Event) (*MgmtClient, error) {
 	proto := "tcp"
 	if len(addr) > 0 && addr[0] == '/' {
 		proto = "unix"
@@ -204,7 +206,7 @@ func (c *MgmtClient) SendSignal(name string) error {
 // can either be used to poll the state or it can be used to determine the
 // initial state after calling SetStateEvents(true) but before the first
 // state event is delivered.
-func (c *MgmtClient) LatestState() (StateEvent, error) {
+func (c *MgmtClient) LatestState() (events.StateEvent, error) {
 	err := c.sendCommand([]byte("state"))
 	if err != nil {
 		return nil, err
@@ -219,7 +221,7 @@ func (c *MgmtClient) LatestState() (StateEvent, error) {
 		return nil, fmt.Errorf("malformed OpenVPN 'state' response")
 	}
 
-	return NewStateEvent(payload[0]), nil
+	return events.NewStateEvent(payload[0]), nil
 }
 
 // LatestStatus retrieves the current daemon status information, in the same format as that produced by the OpenVPN --status directive.
@@ -315,7 +317,7 @@ func (c *MgmtClient) readCommandResult() ([]byte, error) {
 
 	if bytes.HasPrefix(reply, errorPrefix) {
 		message := reply[len(errorPrefix):]
-		return nil, ErrorFromServer(message)
+		return nil, errors.ErrorFromServer(message)
 	}
 
 	return nil, fmt.Errorf("malformed result message")

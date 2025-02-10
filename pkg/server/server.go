@@ -1,23 +1,33 @@
-package openvpn
+package server
 
 import (
 	"net"
 	"time"
+
+	"github.com/malyshevhen/openvpn/pkg/client"
+	"github.com/malyshevhen/openvpn/pkg/events"
 )
 
 // MgmtListener accepts incoming connections from OpenVPN.
 //
 // The primary way to instantiate this type is via the function Listen.
 // See its documentation for more information.
-type MgmtListener struct {
+type MgmtListener interface {
+    Accept() (*IncomingConn, error)
+    Close() error
+    Serve(handler IncomingConnHandler) error
+    Addr() net.Addr
+}
+
+type mgmtListener struct {
 	l net.Listener
 }
 
 // NewMgmtListener constructs a MgmtListener from an already-established
 // net.Listener. In most cases it will be more convenient to use
 // the function Listen.
-func NewMgmtListener(l net.Listener) *MgmtListener {
-	return &MgmtListener{l}
+func NewMgmtListener(l net.Listener) MgmtListener {
+	return &mgmtListener{l}
 }
 
 // Listen opens a listen port and awaits incoming connections from OpenVPN
@@ -25,7 +35,7 @@ func NewMgmtListener(l net.Listener) *MgmtListener {
 //
 // OpenVPN will behave in this manner when launched with the following options:
 //
-//    --management ipaddr port --management-client
+//	--management ipaddr port --management-client
 //
 // Note that in this case the terminology is slightly confusing, since from
 // the standpoint of TCP/IP it is OpenVPN that is the client and our program
@@ -38,9 +48,8 @@ func NewMgmtListener(l net.Listener) *MgmtListener {
 // domain socket. To do this, pass an absolute path to the socket as
 // the listen address, and then run OpenVPN with the following options:
 //
-//    --management /path/to/socket unix --management-client
-//
-func Listen(laddr string) (*MgmtListener, error) {
+//	--management /path/to/socket unix --management-client
+func Listen(laddr string) (MgmtListener, error) {
 	proto := "tcp"
 	if len(laddr) > 0 && laddr[0] == '/' {
 		proto = "unix"
@@ -54,7 +63,7 @@ func Listen(laddr string) (*MgmtListener, error) {
 }
 
 // Accept waits for and returns the next connection.
-func (l *MgmtListener) Accept() (*IncomingConn, error) {
+func (l *mgmtListener) Accept() (*IncomingConn, error) {
 	conn, err := l.l.Accept()
 	if err != nil {
 		return nil, err
@@ -65,12 +74,12 @@ func (l *MgmtListener) Accept() (*IncomingConn, error) {
 
 // Close closes the listener. Any blocked Accept operations
 // will be blocked and each will return an error.
-func (l *MgmtListener) Close() error {
+func (l *mgmtListener) Close() error {
 	return l.l.Close()
 }
 
 // Addr returns the listener's network address.
-func (l *MgmtListener) Addr() net.Addr {
+func (l *mgmtListener) Addr() net.Addr {
 	return l.l.Addr()
 }
 
@@ -79,7 +88,7 @@ func (l *MgmtListener) Addr() net.Addr {
 //
 // Serve does not return unless the listen port is closed; a non-nil
 // error is always returned.
-func (l *MgmtListener) Serve(handler IncomingConnHandler) error {
+func (l *mgmtListener) Serve(handler IncomingConnHandler) error {
 	defer l.Close()
 
 	var tempDelay time.Duration
@@ -123,8 +132,8 @@ type IncomingConn struct {
 //
 // See the documentation for NewClient for discussion about the requirements
 // for eventCh.
-func (ic IncomingConn) Open(eventCh chan<- Event) *MgmtClient {
-	return NewClient(ic.conn, eventCh)
+func (ic IncomingConn) Open(eventCh chan<- events.Event) *client.MgmtClient {
+	return client.NewClient(ic.conn, eventCh)
 }
 
 // Close abruptly closes the socket connected to the OpenVPN process.
