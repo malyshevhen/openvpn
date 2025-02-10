@@ -30,12 +30,16 @@ const (
 
 // MgmtClient .
 type MgmtClient struct {
-	wr      io.Writer
+	wc      io.WriteCloser
 	replies <-chan []byte
 }
 
+func (m *MgmtClient) Close() error {
+	return m.wc.Close()
+}
+
 // NewClient creates a new MgmtClient that communicates via the given
-// io.ReadWriter and emits events on the given channel.
+// io.ReadWriteCloser and emits events on the given channel.
 //
 // eventCh should be a buffered channel with a sufficient buffer depth
 // such that it cannot be filled under the expected event volume. Event
@@ -58,7 +62,7 @@ type MgmtClient struct {
 // is closed. Connection errors may also concurrently surface as error
 // responses from the client's various command methods, should an error
 // occur while we await a reply.
-func NewClient(conn io.ReadWriter, eventCh chan<- Event) *MgmtClient {
+func NewClient(conn io.ReadWriteCloser, eventCh chan<- Event) *MgmtClient {
 	replyCh := make(chan []byte)
 	rawEventCh := make(chan []byte) // not buffered because eventCh should be
 
@@ -76,7 +80,7 @@ func NewClient(conn io.ReadWriter, eventCh chan<- Event) *MgmtClient {
 	return &MgmtClient{
 		// replyCh acts as the reader for our ReadWriter, so we only
 		// need to retain the io.Writer for it, so we can send commands.
-		wr:      conn,
+		wc:      conn,
 		replies: replyCh,
 	}
 }
@@ -200,7 +204,7 @@ func (c *MgmtClient) SendSignal(name string) error {
 // can either be used to poll the state or it can be used to determine the
 // initial state after calling SetStateEvents(true) but before the first
 // state event is delivered.
-func (c *MgmtClient) LatestState() (*StateEvent, error) {
+func (c *MgmtClient) LatestState() (StateEvent, error) {
 	err := c.sendCommand([]byte("state"))
 	if err != nil {
 		return nil, err
@@ -215,9 +219,7 @@ func (c *MgmtClient) LatestState() (*StateEvent, error) {
 		return nil, fmt.Errorf("malformed OpenVPN 'state' response")
 	}
 
-	return &StateEvent{
-		body: payload[0],
-	}, nil
+	return NewStateEvent(payload[0]), nil
 }
 
 // LatestStatus retrieves the current daemon status information, in the same format as that produced by the OpenVPN --status directive.
@@ -263,12 +265,22 @@ func (c *MgmtClient) Pid() (int, error) {
 	return pid, nil
 }
 
-func (c *MgmtClient) sendCommand(cmd []byte) error {
-	_, err := c.wr.Write(cmd)
+// Auth sends username and password to the OpenVPN process.
+func (c *MgmtClient) Auth(username, password string) error {
+	_, err := c.simpleCommand(fmt.Sprintf("username \"Auth\" %s", username))
 	if err != nil {
 		return err
 	}
-	_, err = c.wr.Write(newline)
+	_, err = c.simpleCommand(fmt.Sprintf("password \"Auth\" %s", password))
+	return err
+}
+
+func (c *MgmtClient) sendCommand(cmd []byte) error {
+	_, err := c.wc.Write(cmd)
+	if err != nil {
+		return err
+	}
+	_, err = c.wc.Write(newline)
 	return err
 }
 
@@ -278,15 +290,15 @@ func (c *MgmtClient) sendCommand(cmd []byte) error {
 // The buffer given in 'payload' *must* end with a newline,
 // or else the protocol will be broken.
 func (c *MgmtClient) sendCommandPayload(payload []byte) error {
-	_, err := c.wr.Write(payload)
+	_, err := c.wc.Write(payload)
 	if err != nil {
 		return err
 	}
-	_, err = c.wr.Write(endMessage)
+	_, err = c.wc.Write(endMessage)
 	if err != nil {
 		return err
 	}
-	_, err = c.wr.Write(newline)
+	_, err = c.wc.Write(newline)
 	return err
 }
 

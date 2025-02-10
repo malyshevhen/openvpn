@@ -11,7 +11,7 @@ func TestNewClient(t *testing.T) {
 	tests := []struct {
 		name string // description of this test case
 		// Named input parameters for target function.
-		conn    io.ReadWriter
+		conn    io.ReadWriteCloser
 		eventCh chan<- openvpn.Event
 		want    *openvpn.MgmtClient
 	}{

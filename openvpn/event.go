@@ -7,20 +7,25 @@ import (
 )
 
 var (
-	eventSep            = []byte(":")
-	fieldSep            = []byte(",")
-	byteCountEventKW    = []byte("BYTECOUNT")
-	byteCountCliEventKW = []byte("BYTECOUNT_CLI")
-	clientEventKW       = []byte("CLIENT")
-	echoEventKW         = []byte("ECHO")
-	fatalEventKW        = []byte("FATAL")
-	holdEventKW         = []byte("HOLD")
-	infoEventKW         = []byte("INFO")
-	logEventKW          = []byte("LOG")
-	needOkEventKW       = []byte("NEED-OK")
-	needStrEventKW      = []byte("NEED-STR")
-	passwordEventKW     = []byte("PASSWORD")
-	stateEventKW        = []byte("STATE")
+	eventSep                = []byte(":")
+	fieldSep                = []byte(",")
+	byteCountEventKW        = []byte("BYTECOUNT")
+	byteCountCliEventKW     = []byte("BYTECOUNT_CLI")
+	echoEventKW             = []byte("ECHO")
+	fatalEventKW            = []byte("FATAL")
+	holdEventKW             = []byte("HOLD")
+	stateEventKW            = []byte("STATE")
+	passwordEventKW         = []byte("PASSWORD")
+	clientConnectEventKW    = []byte("CLIENT:CONNECT")    // TODO: not implemented
+	clientDisconnectEventKW = []byte("CLIENT:DISCONNECT") // TODO: not implemented
+	clientReauthEventKW     = []byte("CLIENT:REAUTH")     // TODO: not implemented
+	clientGeneralEventKW    = []byte("CLIENT")            // TODO: not implemented
+	infoEventKW             = []byte("INFO")              // TODO: not implemented
+	logEventKW              = []byte("LOG")               // TODO: not implemented
+	needOkEventKW           = []byte("NEED-OK")           // TODO: not implemented
+	needStrEventKW          = []byte("NEED-STR")          // TODO: not implemented
+	pkcs11IdCountEventKW    = []byte("PKCS11ID-COUNT")    // TODO: not implemented
+	pkcs11IdEntryEventKW    = []byte("PKCS11ID-ENTRY")    // TODO: not implemented
 )
 
 type Event interface {
@@ -34,20 +39,34 @@ type Event interface {
 // caller should exercise caution when making use of events of this type
 // to access unsupported behavior. Backward-compatibility is *not*
 // guaranteed for events of this type.
-type UnknownEvent struct {
+type UnknownEvent interface {
+	Type() string
+	Body() string
+	String() string
+}
+
+// TODO: Docs
+func newUnknownEvent(keyword []byte, body []byte) UnknownEvent {
+	return &unknownEvent{
+		keyword,
+		body,
+	}
+}
+
+type unknownEvent struct {
 	keyword []byte
 	body    []byte
 }
 
-func (e *UnknownEvent) Type() string {
+func (e *unknownEvent) Type() string {
 	return string(e.keyword)
 }
 
-func (e *UnknownEvent) Body() string {
+func (e *unknownEvent) Body() string {
 	return string(e.body)
 }
 
-func (e *UnknownEvent) String() string {
+func (e *unknownEvent) String() string {
 	return fmt.Sprintf("%s: %s", e.keyword, e.body)
 }
 
@@ -60,29 +79,63 @@ func (e *UnknownEvent) String() string {
 // One reason for potentially seeing events of this type is when the target
 // program is actually not an OpenVPN process at all, but in fact this client
 // has been connected to a different sort of server by mistake.
-type MalformedEvent struct {
+type MalformedEvent interface {
+	String() string
+}
+
+// TODO: Docs
+func newMalformedEvent(raw []byte) MalformedEvent {
+	return &malformedEvent{raw}
+}
+
+type malformedEvent struct {
 	raw []byte
 }
 
-func (e *MalformedEvent) String() string {
+func (e *malformedEvent) String() string {
 	return fmt.Sprintf("Malformed Event %q", e.raw)
 }
 
 // HoldEvent is a notification that the OpenVPN process is in a management
 // hold and will not continue connecting until the hold is released, e.g.
 // by calling client.HoldRelease()
-type HoldEvent struct {
+type HoldEvent interface {
+	String() string
+}
+
+// TODO: Docs
+func newHoldEvent(body []byte) HoldEvent {
+	return &holdEvent{body}
+}
+
+type holdEvent struct {
 	body []byte
 }
 
-func (e *HoldEvent) String() string {
+func (e *holdEvent) String() string {
 	return string(e.body)
 }
 
 // StateEvent is a notification of a change of connection state. It can be
 // used, for example, to detect if the OpenVPN connection has been interrupted
 // and the OpenVPN process is attempting to reconnect.
-type StateEvent struct {
+type StateEvent interface {
+	RawTimestamp() string
+	NewState() string
+	Description() string
+	LocalTunnelAddr() string
+	RemoteAddr() string
+	String() string
+}
+
+// TODO: Docs
+func NewStateEvent(body []byte) StateEvent {
+	return &stateEvent{
+		body: body,
+	}
+}
+
+type stateEvent struct {
 	body []byte
 
 	// bodyParts is populated only on first request, giving us the
@@ -91,17 +144,17 @@ type StateEvent struct {
 	bodyParts [][]byte
 }
 
-func (e *StateEvent) RawTimestamp() string {
+func (e *stateEvent) RawTimestamp() string {
 	parts := e.parts()
 	return string(parts[0])
 }
 
-func (e *StateEvent) NewState() string {
+func (e *stateEvent) NewState() string {
 	parts := e.parts()
 	return string(parts[1])
 }
 
-func (e *StateEvent) Description() string {
+func (e *stateEvent) Description() string {
 	parts := e.parts()
 	return string(parts[2])
 }
@@ -111,8 +164,11 @@ func (e *StateEvent) Description() string {
 //
 // This field is only populated for events whose NewState returns
 // either ASSIGN_IP or CONNECTED.
-func (e *StateEvent) LocalTunnelAddr() string {
+func (e *stateEvent) LocalTunnelAddr() string {
 	parts := e.parts()
+	if len(parts) > 8 {
+		return string(parts[8])
+	}
 	return string(parts[3])
 }
 
@@ -121,12 +177,12 @@ func (e *StateEvent) LocalTunnelAddr() string {
 //
 // This field is only populated for events whose NewState returns
 // CONNECTED.
-func (e *StateEvent) RemoteAddr() string {
+func (e *stateEvent) RemoteAddr() string {
 	parts := e.parts()
 	return string(parts[4])
 }
 
-func (e *StateEvent) String() string {
+func (e *stateEvent) String() string {
 	newState := e.NewState()
 	switch newState {
 	case "ASSIGN_IP":
@@ -143,19 +199,15 @@ func (e *StateEvent) String() string {
 	}
 }
 
-func (e *StateEvent) parts() [][]byte {
+func (e *stateEvent) parts() [][]byte {
 	if e.bodyParts == nil {
-		// State messages currently have only five segments, but
-		// we'll ask for 5 so any additional fields that might show
-		// up in newer versions will gather in an element we're
-		// not actually using.
-		e.bodyParts = bytes.SplitN(e.body, fieldSep, 6)
+		e.bodyParts = bytes.SplitN(e.body, fieldSep, 9)
 
 		// Prevent crash if the server has sent us a malformed
 		// status message. This should never actually happen if
 		// the server is behaving itself.
-		if len(e.bodyParts) < 5 {
-			expanded := make([][]byte, 5)
+		if len(e.bodyParts) < 8 {
+			expanded := make([][]byte, 8)
 			copy(expanded, e.bodyParts)
 			e.bodyParts = expanded
 		}
@@ -172,11 +224,22 @@ func (e *StateEvent) parts() [][]byte {
 //
 // This event is emitted only if the management client has turned on events
 // of this type using client.SetEchoEvents(true)
-type EchoEvent struct {
+type EchoEvent interface {
+	RawTimestamp() string
+	Message() string
+	String() string
+}
+
+// TODO: Docs
+func newEchoEvent(body []byte) EchoEvent {
+	return &echoEvent{body}
+}
+
+type echoEvent struct {
 	body []byte
 }
 
-func (e *EchoEvent) RawTimestamp() string {
+func (e *echoEvent) RawTimestamp() string {
 	sepIndex := bytes.Index(e.body, fieldSep)
 	if sepIndex == -1 {
 		return ""
@@ -184,7 +247,7 @@ func (e *EchoEvent) RawTimestamp() string {
 	return string(e.body[:sepIndex])
 }
 
-func (e *EchoEvent) Message() string {
+func (e *echoEvent) Message() string {
 	sepIndex := bytes.Index(e.body, fieldSep)
 	if sepIndex == -1 {
 		return ""
@@ -192,7 +255,7 @@ func (e *EchoEvent) Message() string {
 	return string(e.body[sepIndex+1:])
 }
 
-func (e *EchoEvent) String() string {
+func (e *echoEvent) String() string {
 	return fmt.Sprintf("ECHO: %s", e.Message())
 }
 
@@ -205,7 +268,22 @@ func (e *EchoEvent) String() string {
 // For other OpenVPN modes, events are emitted only once per interval for the
 // single connection managed by the target process, and ClientId returns
 // the empty string.
-type ByteCountEvent struct {
+type ByteCountEvent interface {
+	ClientId() string
+	BytesIn() int
+	BytesOut() int
+	String() string
+}
+
+// TODO: Docs
+func newByteCountEvent(hasClient bool, body []byte) ByteCountEvent {
+	return &byteCountEvent{
+		hasClient: hasClient,
+		body:      body,
+	}
+}
+
+type byteCountEvent struct {
 	hasClient bool
 	body      []byte
 
@@ -213,7 +291,7 @@ type ByteCountEvent struct {
 	bodyParts [][]byte
 }
 
-func (e *ByteCountEvent) ClientId() string {
+func (e *byteCountEvent) ClientId() string {
 	if !e.hasClient {
 		return ""
 	}
@@ -221,7 +299,7 @@ func (e *ByteCountEvent) ClientId() string {
 	return string(e.parts()[0])
 }
 
-func (e *ByteCountEvent) BytesIn() int {
+func (e *byteCountEvent) BytesIn() int {
 	index := 0
 	if e.hasClient {
 		index = 1
@@ -233,7 +311,7 @@ func (e *ByteCountEvent) BytesIn() int {
 	return val
 }
 
-func (e *ByteCountEvent) BytesOut() int {
+func (e *byteCountEvent) BytesOut() int {
 	index := 1
 	if e.hasClient {
 		index = 2
@@ -245,7 +323,7 @@ func (e *ByteCountEvent) BytesOut() int {
 	return val
 }
 
-func (e *ByteCountEvent) String() string {
+func (e *byteCountEvent) String() string {
 	if e.hasClient {
 		return fmt.Sprintf("Client %s: %d in, %d out", e.ClientId(), e.BytesIn(), e.BytesOut())
 	} else {
@@ -253,7 +331,7 @@ func (e *ByteCountEvent) String() string {
 	}
 }
 
-func (e *ByteCountEvent) parts() [][]byte {
+func (e *byteCountEvent) parts() [][]byte {
 	if e.bodyParts == nil {
 		e.bodyParts = bytes.SplitN(e.body, fieldSep, 4)
 
@@ -274,11 +352,48 @@ func (e *ByteCountEvent) parts() [][]byte {
 	return e.bodyParts
 }
 
+// PasswordEvent represents a message from the OpenVPN process asking for
+// authentication data, such as username and password.
+type PasswordEvent interface {
+	String() string
+}
+
+// TODO: Docs
+func newPasswordEvent(body []byte) PasswordEvent {
+	return &passwordEvent{body}
+}
+
+type passwordEvent struct {
+	body []byte
+}
+
+func (e *passwordEvent) String() string {
+	return fmt.Sprintf("PASSWORD: %s", string(e.body))
+}
+
+// FatalEvent represents a message from the OpenVPN process before exiting.
+type FatalEvent interface {
+	String() string
+}
+
+// TODO: Docs
+func newFatalEvent(body []byte) FatalEvent {
+	return &fatalEvent{body}
+}
+
+type fatalEvent struct {
+	body []byte
+}
+
+func (e *fatalEvent) String() string {
+	return fmt.Sprintf("FATAL: %s", string(e.body))
+}
+
 func upgradeEvent(raw []byte) Event {
 	splitIdx := bytes.Index(raw, eventSep)
 	if splitIdx == -1 {
 		// Should never happen, but we'll handle it robustly if it does.
-		return &MalformedEvent{raw}
+		return &malformedEvent{raw}
 	}
 
 	keyword := raw[:splitIdx]
@@ -286,16 +401,20 @@ func upgradeEvent(raw []byte) Event {
 
 	switch {
 	case bytes.Equal(keyword, stateEventKW):
-		return &StateEvent{body: body}
+		return NewStateEvent(body)
 	case bytes.Equal(keyword, holdEventKW):
-		return &HoldEvent{body}
+		return newHoldEvent(body)
 	case bytes.Equal(keyword, echoEventKW):
-		return &EchoEvent{body}
+		return newEchoEvent(body)
 	case bytes.Equal(keyword, byteCountEventKW):
-		return &ByteCountEvent{hasClient: false, body: body}
+		return newByteCountEvent(false, body)
 	case bytes.Equal(keyword, byteCountCliEventKW):
-		return &ByteCountEvent{hasClient: true, body: body}
+		return newByteCountEvent(true, body)
+	case bytes.Equal(keyword, passwordEventKW):
+		return newPasswordEvent(body)
+	case bytes.Equal(keyword, fatalEventKW):
+		return newFatalEvent(body)
 	default:
-		return &UnknownEvent{keyword, body}
+		return newUnknownEvent(keyword, body)
 	}
 }

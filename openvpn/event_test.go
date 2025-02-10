@@ -24,9 +24,9 @@ func TestMalformedEvent(t *testing.T) {
 	for i, testCase := range testCases {
 		event := upgradeEvent(testCase)
 
-		var malformed *MalformedEvent
+		var malformed MalformedEvent
 		var ok bool
-		if malformed, ok = event.(*MalformedEvent); !ok {
+		if malformed, ok = event.(MalformedEvent); !ok {
 			t.Errorf("test %d got %T; want %T", i, event, malformed)
 			continue
 		}
@@ -65,9 +65,9 @@ func TestUnknownEvent(t *testing.T) {
 	for i, testCase := range testCases {
 		event := upgradeEvent(testCase.Input)
 
-		var unk *UnknownEvent
+		var unk UnknownEvent
 		var ok bool
-		if unk, ok = event.(*UnknownEvent); !ok {
+		if unk, ok = event.(UnknownEvent); !ok {
 			t.Errorf("test %d got %T; want %T", i, event, unk)
 			continue
 		}
@@ -90,9 +90,9 @@ func TestHoldEvent(t *testing.T) {
 	for i, testCase := range testCases {
 		event := upgradeEvent(testCase)
 
-		var hold *HoldEvent
+		var hold HoldEvent
 		var ok bool
-		if hold, ok = event.(*HoldEvent); !ok {
+		if hold, ok = event.(HoldEvent); !ok {
 			t.Errorf("test %d got %T; want %T", i, event, hold)
 			continue
 		}
@@ -136,9 +136,9 @@ func TestEchoEvent(t *testing.T) {
 	for i, testCase := range testCases {
 		event := upgradeEvent(testCase.Input)
 
-		var echo *EchoEvent
+		var echo EchoEvent
 		var ok bool
-		if echo, ok = event.(*EchoEvent); !ok {
+		if echo, ok = event.(EchoEvent); !ok {
 			t.Errorf("test %d got %T; want %T", i, event, echo)
 			continue
 		}
@@ -215,9 +215,9 @@ func TestStateEvent(t *testing.T) {
 	for i, testCase := range testCases {
 		event := upgradeEvent(testCase.Input)
 
-		var st *StateEvent
+		var st StateEvent
 		var ok bool
-		if st, ok = event.(*StateEvent); !ok {
+		if st, ok = event.(StateEvent); !ok {
 			t.Errorf("test %d got %T; want %T", i, event, st)
 			continue
 		}
@@ -326,9 +326,9 @@ func TestByteCountEvent(t *testing.T) {
 	for i, testCase := range testCases {
 		event := upgradeEvent(testCase.Input)
 
-		var bc *ByteCountEvent
+		var bc ByteCountEvent
 		var ok bool
-		if bc, ok = event.(*ByteCountEvent); !ok {
+		if bc, ok = event.(ByteCountEvent); !ok {
 			t.Errorf("test %d got %T; want %T", i, event, bc)
 			continue
 		}

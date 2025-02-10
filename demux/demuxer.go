@@ -17,7 +17,7 @@ var readErrSynthEvent = []byte("FATAL:Error reading from OpenVPN")
 //
 // The buffers written to replyCh are entire raw message lines (without the
 // trailing newlines), while the buffers written to eventCh are the raw
-// event strings with the prototcol's leading '>' indicator omitted.
+// event strings with the protocol's leading '>' indicator omitted.
 //
 // The caller should usually provide buffered channels of sufficient buffer
 // depth so that the reply channel will not be starved by slow event
@@ -41,14 +41,20 @@ func Demultiplex(r io.Reader, replyCh, eventCh chan<- []byte) {
 			continue
 		}
 
+  		cbuf := make([]byte, len(buf))
+		i := copy(cbuf, buf)
+		if i < 1 {
+			continue
+		}
+
 		// Asynchronous messages always start with > to differentiate
 		// them from replies.
-		if buf[0] == '>' {
+		if cbuf[0] == '>' {
 			// Trim off the > when we post the message, since it's
 			// redundant after we've demuxed.
-			eventCh <- buf[1:]
+			eventCh <- cbuf[1:]
 		} else {
-			replyCh <- buf
+			replyCh <- cbuf
 		}
 	}
 
