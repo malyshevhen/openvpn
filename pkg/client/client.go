@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/malyshevhen/openvpn/pkg/demux"
-	errors "github.com/malyshevhen/openvpn/pkg/errors"
 	"github.com/malyshevhen/openvpn/pkg/events"
 )
 
@@ -341,7 +340,7 @@ func (c *mgmtClient) readCommandResult() ([]byte, error) {
 
 	if bytes.HasPrefix(reply, errorPrefix) {
 		message := reply[len(errorPrefix):]
-		return nil, errors.ErrorFromServer(message)
+		return nil, ErrorFromServer(message)
 	}
 
 	return nil, fmt.Errorf("malformed result message")

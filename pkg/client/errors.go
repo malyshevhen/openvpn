@@ -1,4 +1,4 @@
-package openvpn
+package client
 
 type ErrorFromServer []byte
 
