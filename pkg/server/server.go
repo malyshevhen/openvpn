@@ -3,9 +3,6 @@ package server
 import (
 	"net"
 	"time"
-
-	"github.com/malyshevhen/openvpn/pkg/client"
-	"github.com/malyshevhen/openvpn/pkg/events"
 )
 
 // MgmtListener accepts incoming connections from OpenVPN.
@@ -13,14 +10,22 @@ import (
 // The primary way to instantiate this type is via the function Listen.
 // See its documentation for more information.
 type MgmtListener interface {
-    Accept() (*IncomingConn, error)
-    Close() error
-    Serve(handler IncomingConnHandler) error
-    Addr() net.Addr
-}
+	// Accept waits for and returns the next connection.
+	Accept() (*IncomingConn, error)
 
-type mgmtListener struct {
-	l net.Listener
+	// Close closes the listener. Any blocked Accept operations
+	// will be blocked and each will return an error.
+	Close() error
+
+	// Serve will await new connections and call the given handler
+	// for each.
+	//
+	// Serve does not return unless the listen port is closed; a non-nil
+	// error is always returned.
+	Serve(handler IncomingConnHandler) error
+
+	// Addr returns the listener's network address.
+	Addr() net.Addr
 }
 
 // NewMgmtListener constructs a MgmtListener from an already-established
@@ -62,7 +67,10 @@ func Listen(laddr string) (MgmtListener, error) {
 	return NewMgmtListener(listener), nil
 }
 
-// Accept waits for and returns the next connection.
+type mgmtListener struct {
+	l net.Listener
+}
+
 func (l *mgmtListener) Accept() (*IncomingConn, error) {
 	conn, err := l.l.Accept()
 	if err != nil {
@@ -72,22 +80,14 @@ func (l *mgmtListener) Accept() (*IncomingConn, error) {
 	return &IncomingConn{conn}, nil
 }
 
-// Close closes the listener. Any blocked Accept operations
-// will be blocked and each will return an error.
 func (l *mgmtListener) Close() error {
 	return l.l.Close()
 }
 
-// Addr returns the listener's network address.
 func (l *mgmtListener) Addr() net.Addr {
 	return l.l.Addr()
 }
 
-// Serve will await new connections and call the given handler
-// for each.
-//
-// Serve does not return unless the listen port is closed; a non-nil
-// error is always returned.
 func (l *mgmtListener) Serve(handler IncomingConnHandler) error {
 	defer l.Close()
 
@@ -121,31 +121,6 @@ func (l *mgmtListener) Serve(handler IncomingConnHandler) error {
 
 		go handler.ServeOpenVPNMgmt(*incoming)
 	}
-}
-
-type IncomingConn struct {
-	conn net.Conn
-}
-
-// Open initiates communication with the connected OpenVPN process,
-// and establishes the channel on which events will be delivered.
-//
-// See the documentation for NewClient for discussion about the requirements
-// for eventCh.
-func (ic IncomingConn) Open(eventCh chan<- events.Event) *client.MgmtClient {
-	return client.NewClient(ic.conn, eventCh)
-}
-
-// Close abruptly closes the socket connected to the OpenVPN process.
-//
-// This is a rather abrasive way to close the channel, intended for rejecting
-// unwanted incoming clients that may or may not speak the OpenVPN protocol.
-//
-// Once communication is accepted and established, it is generally better
-// to close the connection gracefully using commands on the client returned
-// from Open.
-func (ic IncomingConn) Close() error {
-	return ic.conn.Close()
 }
 
 type IncomingConnHandler interface {

@@ -6,26 +6,27 @@ import (
 	"strconv"
 )
 
-var (
-	eventSep                = []byte(":")
-	fieldSep                = []byte(",")
-	byteCountEventKW        = []byte("BYTECOUNT")
-	byteCountCliEventKW     = []byte("BYTECOUNT_CLI")
-	echoEventKW             = []byte("ECHO")
-	fatalEventKW            = []byte("FATAL")
-	holdEventKW             = []byte("HOLD")
-	stateEventKW            = []byte("STATE")
-	passwordEventKW         = []byte("PASSWORD")
-	clientConnectEventKW    = []byte("CLIENT:CONNECT")    // TODO: not implemented
-	clientDisconnectEventKW = []byte("CLIENT:DISCONNECT") // TODO: not implemented
-	clientReauthEventKW     = []byte("CLIENT:REAUTH")     // TODO: not implemented
-	clientGeneralEventKW    = []byte("CLIENT")            // TODO: not implemented
-	infoEventKW             = []byte("INFO")              // TODO: not implemented
-	logEventKW              = []byte("LOG")               // TODO: not implemented
-	needOkEventKW           = []byte("NEED-OK")           // TODO: not implemented
-	needStrEventKW          = []byte("NEED-STR")          // TODO: not implemented
-	pkcs11IdCountEventKW    = []byte("PKCS11ID-COUNT")    // TODO: not implemented
-	pkcs11IdEntryEventKW    = []byte("PKCS11ID-ENTRY")    // TODO: not implemented
+const (
+	eventSep = ":"
+	fieldSep = ","
+
+	byteCountEventKW        = "BYTECOUNT"
+	byteCountCliEventKW     = "BYTECOUNT_CLI"
+	echoEventKW             = "ECHO"
+	fatalEventKW            = "FATAL"
+	holdEventKW             = "HOLD"
+	stateEventKW            = "STATE"
+	passwordEventKW         = "PASSWORD"
+	clientConnectEventKW    = "CLIENT:CONNECT"    // TODO: not implemented
+	clientDisconnectEventKW = "CLIENT:DISCONNECT" // TODO: not implemented
+	clientReauthEventKW     = "CLIENT:REAUTH"     // TODO: not implemented
+	clientGeneralEventKW    = "CLIENT"            // TODO: not implemented
+	infoEventKW             = "INFO"              // TODO: not implemented
+	logEventKW              = "LOG"               // TODO: not implemented
+	needOkEventKW           = "NEED-OK"           // TODO: not implemented
+	needStrEventKW          = "NEED-STR"          // TODO: not implemented
+	pkcs11IdCountEventKW    = "PKCS11ID-COUNT"    // TODO: not implemented
+	pkcs11IdEntryEventKW    = "PKCS11ID-ENTRY"    // TODO: not implemented
 )
 
 type Event interface {
@@ -45,7 +46,6 @@ type UnknownEvent interface {
 	String() string
 }
 
-// TODO: Docs
 func newUnknownEvent(keyword []byte, body []byte) UnknownEvent {
 	return &unknownEvent{
 		keyword,
@@ -83,7 +83,6 @@ type MalformedEvent interface {
 	String() string
 }
 
-// TODO: Docs
 func newMalformedEvent(raw []byte) MalformedEvent {
 	return &malformedEvent{raw}
 }
@@ -103,7 +102,6 @@ type HoldEvent interface {
 	String() string
 }
 
-// TODO: Docs
 func newHoldEvent(body []byte) HoldEvent {
 	return &holdEvent{body}
 }
@@ -123,7 +121,19 @@ type StateEvent interface {
 	RawTimestamp() string
 	NewState() string
 	Description() string
+
+	// LocalTunnelAddr returns the IP address of the local interface within
+	// the tunnel, as a string that can be parsed using net.ParseIP.
+	//
+	// This field is only populated for events whose NewState returns
+	// either ASSIGN_IP or CONNECTED.
 	LocalTunnelAddr() string
+
+	// RemoteAddr returns the non-tunnel IP address of the remote
+	// system that has connected to the local OpenVPN process.
+	//
+	// This field is only populated for events whose NewState returns
+	// CONNECTED.
 	RemoteAddr() string
 	String() string
 }
@@ -159,11 +169,6 @@ func (e *stateEvent) Description() string {
 	return string(parts[2])
 }
 
-// LocalTunnelAddr returns the IP address of the local interface within
-// the tunnel, as a string that can be parsed using net.ParseIP.
-//
-// This field is only populated for events whose NewState returns
-// either ASSIGN_IP or CONNECTED.
 func (e *stateEvent) LocalTunnelAddr() string {
 	parts := e.parts()
 	if len(parts) > 8 {
@@ -172,11 +177,6 @@ func (e *stateEvent) LocalTunnelAddr() string {
 	return string(parts[3])
 }
 
-// RemoteAddr returns the non-tunnel IP address of the remote
-// system that has connected to the local OpenVPN process.
-//
-// This field is only populated for events whose NewState returns
-// CONNECTED.
 func (e *stateEvent) RemoteAddr() string {
 	parts := e.parts()
 	return string(parts[4])
@@ -201,7 +201,7 @@ func (e *stateEvent) String() string {
 
 func (e *stateEvent) parts() [][]byte {
 	if e.bodyParts == nil {
-		e.bodyParts = bytes.SplitN(e.body, fieldSep, 9)
+		e.bodyParts = bytes.SplitN(e.body, []byte(fieldSep), 9)
 
 		// Prevent crash if the server has sent us a malformed
 		// status message. This should never actually happen if
@@ -230,7 +230,6 @@ type EchoEvent interface {
 	String() string
 }
 
-// TODO: Docs
 func newEchoEvent(body []byte) EchoEvent {
 	return &echoEvent{body}
 }
@@ -240,7 +239,7 @@ type echoEvent struct {
 }
 
 func (e *echoEvent) RawTimestamp() string {
-	sepIndex := bytes.Index(e.body, fieldSep)
+	sepIndex := bytes.Index(e.body, []byte(fieldSep))
 	if sepIndex == -1 {
 		return ""
 	}
@@ -248,7 +247,7 @@ func (e *echoEvent) RawTimestamp() string {
 }
 
 func (e *echoEvent) Message() string {
-	sepIndex := bytes.Index(e.body, fieldSep)
+	sepIndex := bytes.Index(e.body, []byte(fieldSep))
 	if sepIndex == -1 {
 		return ""
 	}
@@ -275,7 +274,6 @@ type ByteCountEvent interface {
 	String() string
 }
 
-// TODO: Docs
 func newByteCountEvent(hasClient bool, body []byte) ByteCountEvent {
 	return &byteCountEvent{
 		hasClient: hasClient,
@@ -333,7 +331,7 @@ func (e *byteCountEvent) String() string {
 
 func (e *byteCountEvent) parts() [][]byte {
 	if e.bodyParts == nil {
-		e.bodyParts = bytes.SplitN(e.body, fieldSep, 4)
+		e.bodyParts = bytes.SplitN(e.body, []byte(fieldSep), 4)
 
 		wantCount := 2
 		if e.hasClient {
@@ -358,7 +356,6 @@ type PasswordEvent interface {
 	String() string
 }
 
-// TODO: Docs
 func newPasswordEvent(body []byte) PasswordEvent {
 	return &passwordEvent{body}
 }
@@ -376,7 +373,6 @@ type FatalEvent interface {
 	String() string
 }
 
-// TODO: Docs
 func newFatalEvent(body []byte) FatalEvent {
 	return &fatalEvent{body}
 }
@@ -390,29 +386,29 @@ func (e *fatalEvent) String() string {
 }
 
 func UpgradeEvent(raw []byte) Event {
-	splitIdx := bytes.Index(raw, eventSep)
+	splitIdx := bytes.Index(raw, []byte(eventSep))
 	if splitIdx == -1 {
 		// Should never happen, but we'll handle it robustly if it does.
-		return &malformedEvent{raw}
+		return newMalformedEvent(raw)
 	}
 
 	keyword := raw[:splitIdx]
 	body := raw[splitIdx+1:]
 
-	switch {
-	case bytes.Equal(keyword, stateEventKW):
+	switch string(keyword) {
+	case stateEventKW:
 		return NewStateEvent(body)
-	case bytes.Equal(keyword, holdEventKW):
+	case holdEventKW:
 		return newHoldEvent(body)
-	case bytes.Equal(keyword, echoEventKW):
+	case echoEventKW:
 		return newEchoEvent(body)
-	case bytes.Equal(keyword, byteCountEventKW):
+	case byteCountEventKW:
 		return newByteCountEvent(false, body)
-	case bytes.Equal(keyword, byteCountCliEventKW):
+	case byteCountCliEventKW:
 		return newByteCountEvent(true, body)
-	case bytes.Equal(keyword, passwordEventKW):
+	case passwordEventKW:
 		return newPasswordEvent(body)
-	case bytes.Equal(keyword, fatalEventKW):
+	case fatalEventKW:
 		return newFatalEvent(body)
 	default:
 		return newUnknownEvent(keyword, body)

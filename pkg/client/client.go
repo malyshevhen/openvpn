@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/malyshevhen/openvpn/pkg/demux"
-	"github.com/malyshevhen/openvpn/pkg/events"
 	errors "github.com/malyshevhen/openvpn/pkg/errors"
+	"github.com/malyshevhen/openvpn/pkg/events"
 )
 
 var (
@@ -31,13 +31,81 @@ const (
 )
 
 // MgmtClient .
-type MgmtClient struct {
-	wc      io.WriteCloser
-	replies <-chan []byte
-}
+type MgmtClient interface {
+	// HoldRelease instructs OpenVPN to release any management hold preventing
+	// it from proceeding, but to retain the state of the hold flag such that
+	// the daemon will hold again if it needs to reconnect for any reason.
+	//
+	// OpenVPN can be instructed to activate a management hold on startup by
+	// running it with the following option:
+	//
+	//	--management-hold
+	//
+	// Instructing OpenVPN to hold gives your client a chance to connect and
+	// do any necessary configuration before a connection proceeds, thus avoiding
+	// the problem of missed events.
+	//
+	// When OpenVPN begins holding, or when a new management client connects while
+	// a hold is already in effect, a HoldEvent will be emitted on the event
+	// channel.
+	HoldRelease() error
 
-func (m *MgmtClient) Close() error {
-	return m.wc.Close()
+	// Auth sends username and password to the OpenVPN process.
+	Auth(username, password string) error
+
+	// SetStateEvents either enables or disables asynchronous events for changes
+	// in the OpenVPN connection state.
+	//
+	// When enabled, a StateEvent will be emitted from the event channel each
+	// time the connection state changes. See StateEvent for more information
+	// on the event structure.
+	SetStateEvents(on bool) error
+
+	// SetEchoEvents either enables or disables asynchronous events for "echo"
+	// commands sent from a remote server to our managed OpenVPN client.
+	//
+	// When enabled, an EchoEvent will be emitted from the event channel each
+	// time the server sends an echo command. See EchoEvent for more information.
+	SetEchoEvents(on bool) error
+
+	// SetByteCountEvents either enables or disables ongoing asynchronous events
+	// for information on OpenVPN bandwidth usage.
+	//
+	// When enabled, a ByteCountEvent will be emitted at given time interval,
+	// (which may only be whole seconds) describing how many bytes have been
+	// transferred in each direction See ByteCountEvent for more information.
+	//
+	// Set the time interval to zero in order to disable byte count events.
+	SetByteCountEvents(interval time.Duration) error
+
+	// SendSignal sends a signal to the OpenVPN process via the management
+	// channel. In effect this causes the OpenVPN process to send a signal to
+	// itself on our behalf.
+	//
+	// OpenVPN accepts a subset of the usual UNIX signal names, including
+	// "SIGHUP", "SIGTERM", "SIGUSR1" and "SIGUSR2". See the OpenVPN manual
+	// page for the meaning of each.
+	//
+	// Behavior is undefined if the given signal name is not entirely uppercase
+	// letters. In particular, including newlines in the string is likely to
+	// cause very unpredictable behavior.
+	SendSignal(name string) error
+
+	// LatestState retrieves the most recent StateEvent from the server. This
+	// can either be used to poll the state or it can be used to determine the
+	// initial state after calling SetStateEvents(true) but before the first
+	// state event is delivered.
+	LatestState() (events.StateEvent, error)
+
+	// LatestStatus retrieves the current daemon status information,
+	// in the same format as that produced by the OpenVPN --status directive.
+	LatestStatus(statusFormat StatusFormat) ([][]byte, error)
+
+	// Pid retrieves the process id of the connected OpenVPN process.
+	Pid() (int, error)
+
+    // Closes the client
+	Close() error
 }
 
 // NewClient creates a new MgmtClient that communicates via the given
@@ -64,7 +132,7 @@ func (m *MgmtClient) Close() error {
 // is closed. Connection errors may also concurrently surface as error
 // responses from the client's various command methods, should an error
 // occur while we await a reply.
-func NewClient(conn io.ReadWriteCloser, eventCh chan<- events.Event) *MgmtClient {
+func NewClient(conn io.ReadWriteCloser, eventCh chan<- events.Event) MgmtClient {
 	replyCh := make(chan []byte)
 	rawEventCh := make(chan []byte) // not buffered because eventCh should be
 
@@ -79,7 +147,7 @@ func NewClient(conn io.ReadWriteCloser, eventCh chan<- events.Event) *MgmtClient
 		close(eventCh)
 	}()
 
-	return &MgmtClient{
+	return &mgmtClient{
 		// replyCh acts as the reader for our ReadWriter, so we only
 		// need to retain the io.Writer for it, so we can send commands.
 		wc:      conn,
@@ -106,7 +174,7 @@ func NewClient(conn io.ReadWriteCloser, eventCh chan<- events.Event) *MgmtClient
 // the target address, having run OpenVPN with the following options:
 //
 //	--management /path/to/socket unix
-func Dial(addr string, eventCh chan<- events.Event) (*MgmtClient, error) {
+func Dial(addr string, eventCh chan<- events.Event) (MgmtClient, error) {
 	proto := "tcp"
 	if len(addr) > 0 && addr[0] == '/' {
 		proto = "unix"
@@ -119,34 +187,21 @@ func Dial(addr string, eventCh chan<- events.Event) (*MgmtClient, error) {
 	return NewClient(conn, eventCh), nil
 }
 
-// HoldRelease instructs OpenVPN to release any management hold preventing
-// it from proceeding, but to retain the state of the hold flag such that
-// the daemon will hold again if it needs to reconnect for any reason.
-//
-// OpenVPN can be instructed to activate a management hold on startup by
-// running it with the following option:
-//
-//	--management-hold
-//
-// Instructing OpenVPN to hold gives your client a chance to connect and
-// do any necessary configuration before a connection proceeds, thus avoiding
-// the problem of missed events.
-//
-// When OpenVPN begins holding, or when a new management client connects while
-// a hold is already in effect, a HoldEvent will be emitted on the event
-// channel.
-func (c *MgmtClient) HoldRelease() error {
+type mgmtClient struct {
+	wc      io.WriteCloser
+	replies <-chan []byte
+}
+
+func (m *mgmtClient) Close() error {
+	return m.wc.Close()
+}
+
+func (c *mgmtClient) HoldRelease() error {
 	_, err := c.simpleCommand("hold release")
 	return err
 }
 
-// SetStateEvents either enables or disables asynchronous events for changes
-// in the OpenVPN connection state.
-//
-// When enabled, a StateEvent will be emitted from the event channel each
-// time the connection state changes. See StateEvent for more information
-// on the event structure.
-func (c *MgmtClient) SetStateEvents(on bool) error {
+func (c *mgmtClient) SetStateEvents(on bool) error {
 	var err error
 	if on {
 		_, err = c.simpleCommand("state on")
@@ -156,12 +211,7 @@ func (c *MgmtClient) SetStateEvents(on bool) error {
 	return err
 }
 
-// SetEchoEvents either enables or disables asynchronous events for "echo"
-// commands sent from a remote server to our managed OpenVPN client.
-//
-// When enabled, an EchoEvent will be emitted from the event channel each
-// time the server sends an echo command. See EchoEvent for more information.
-func (c *MgmtClient) SetEchoEvents(on bool) error {
+func (c *mgmtClient) SetEchoEvents(on bool) error {
 	var err error
 	if on {
 		_, err = c.simpleCommand("echo on")
@@ -171,42 +221,19 @@ func (c *MgmtClient) SetEchoEvents(on bool) error {
 	return err
 }
 
-// SetByteCountEvents either enables or disables ongoing asynchronous events
-// for information on OpenVPN bandwidth usage.
-//
-// When enabled, a ByteCountEvent will be emitted at given time interval,
-// (which may only be whole seconds) describing how many bytes have been
-// transferred in each direction See ByteCountEvent for more information.
-//
-// Set the time interval to zero in order to disable byte count events.
-func (c *MgmtClient) SetByteCountEvents(interval time.Duration) error {
+func (c *mgmtClient) SetByteCountEvents(interval time.Duration) error {
 	msg := fmt.Sprintf("bytecount %d", int(interval.Seconds()))
 	_, err := c.simpleCommand(msg)
 	return err
 }
 
-// SendSignal sends a signal to the OpenVPN process via the management
-// channel. In effect this causes the OpenVPN process to send a signal to
-// itself on our behalf.
-//
-// OpenVPN accepts a subset of the usual UNIX signal names, including
-// "SIGHUP", "SIGTERM", "SIGUSR1" and "SIGUSR2". See the OpenVPN manual
-// page for the meaning of each.
-//
-// Behavior is undefined if the given signal name is not entirely uppercase
-// letters. In particular, including newlines in the string is likely to
-// cause very unpredictable behavior.
-func (c *MgmtClient) SendSignal(name string) error {
+func (c *mgmtClient) SendSignal(name string) error {
 	msg := fmt.Sprintf("signal %q", name)
 	_, err := c.simpleCommand(msg)
 	return err
 }
 
-// LatestState retrieves the most recent StateEvent from the server. This
-// can either be used to poll the state or it can be used to determine the
-// initial state after calling SetStateEvents(true) but before the first
-// state event is delivered.
-func (c *MgmtClient) LatestState() (events.StateEvent, error) {
+func (c *mgmtClient) LatestState() (events.StateEvent, error) {
 	err := c.sendCommand([]byte("state"))
 	if err != nil {
 		return nil, err
@@ -224,8 +251,7 @@ func (c *MgmtClient) LatestState() (events.StateEvent, error) {
 	return events.NewStateEvent(payload[0]), nil
 }
 
-// LatestStatus retrieves the current daemon status information, in the same format as that produced by the OpenVPN --status directive.
-func (c *MgmtClient) LatestStatus(statusFormat StatusFormat) ([][]byte, error) {
+func (c *mgmtClient) LatestStatus(statusFormat StatusFormat) ([][]byte, error) {
 	var cmd []byte
 	switch statusFormat {
 	case StatusFormatDefault:
@@ -248,8 +274,7 @@ func (c *MgmtClient) LatestStatus(statusFormat StatusFormat) ([][]byte, error) {
 	return payload, nil
 }
 
-// Pid retrieves the process id of the connected OpenVPN process.
-func (c *MgmtClient) Pid() (int, error) {
+func (c *mgmtClient) Pid() (int, error) {
 	raw, err := c.simpleCommand("pid")
 	if err != nil {
 		return 0, err
@@ -267,8 +292,7 @@ func (c *MgmtClient) Pid() (int, error) {
 	return pid, nil
 }
 
-// Auth sends username and password to the OpenVPN process.
-func (c *MgmtClient) Auth(username, password string) error {
+func (c *mgmtClient) Auth(username, password string) error {
 	_, err := c.simpleCommand(fmt.Sprintf("username \"Auth\" %s", username))
 	if err != nil {
 		return err
@@ -277,7 +301,7 @@ func (c *MgmtClient) Auth(username, password string) error {
 	return err
 }
 
-func (c *MgmtClient) sendCommand(cmd []byte) error {
+func (c *mgmtClient) sendCommand(cmd []byte) error {
 	_, err := c.wc.Write(cmd)
 	if err != nil {
 		return err
@@ -291,7 +315,7 @@ func (c *MgmtClient) sendCommand(cmd []byte) error {
 //
 // The buffer given in 'payload' *must* end with a newline,
 // or else the protocol will be broken.
-func (c *MgmtClient) sendCommandPayload(payload []byte) error {
+func (c *mgmtClient) sendCommandPayload(payload []byte) error {
 	_, err := c.wc.Write(payload)
 	if err != nil {
 		return err
@@ -304,7 +328,7 @@ func (c *MgmtClient) sendCommandPayload(payload []byte) error {
 	return err
 }
 
-func (c *MgmtClient) readCommandResult() ([]byte, error) {
+func (c *mgmtClient) readCommandResult() ([]byte, error) {
 	reply, ok := <-c.replies
 	if !ok {
 		return nil, fmt.Errorf("connection closed while awaiting result")
@@ -323,7 +347,7 @@ func (c *MgmtClient) readCommandResult() ([]byte, error) {
 	return nil, fmt.Errorf("malformed result message")
 }
 
-func (c *MgmtClient) readCommandResponsePayload() ([][]byte, error) {
+func (c *mgmtClient) readCommandResponsePayload() ([][]byte, error) {
 	lines := make([][]byte, 0, 10)
 
 	for {
@@ -344,7 +368,7 @@ func (c *MgmtClient) readCommandResponsePayload() ([][]byte, error) {
 	return lines, nil
 }
 
-func (c *MgmtClient) simpleCommand(cmd string) ([]byte, error) {
+func (c *mgmtClient) simpleCommand(cmd string) ([]byte, error) {
 	err := c.sendCommand([]byte(cmd))
 	if err != nil {
 		return nil, err

@@ -14,7 +14,7 @@ func TestNewClient(t *testing.T) {
 		// Named input parameters for target function.
 		conn    io.ReadWriteCloser
 		eventCh chan<- Event
-		want    *MgmtClient
+		want    MgmtClient
 	}{
 		// TODO: Add test cases.
 	}
